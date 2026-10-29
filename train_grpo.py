@@ -147,6 +147,10 @@ def main() -> None:
         vllm_server_base_url=args.vllm_server_url if args.vllm_mode == "server" else None,
         vllm_gpu_memory_utilization=args.vllm_gpu_memory_utilization,
         vllm_max_model_length=args.vllm_max_model_length or max_completion_length + 1024,
+        # TRL loads the model in float32 unless told otherwise (15 GB for 4B instead of 8 GB): load it in the
+        # training precision. This also left too little GPU memory for vLLM in the first A100 run (2026-10-29).
+        model_init_kwargs={"dtype": "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+                           else "float16"},
         # T4 (Colab free tier) has no bf16; fall back to fp16 there.
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),

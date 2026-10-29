@@ -1,0 +1,8 @@
+{
+  "description": "Rerun of the Qwen3-4B thinking baseline on the 20 held-out evaluation words (the first A100 run's baseline failed: TRL loaded the trainer's model copy in float32, leaving too little memory for vLLM). Same sampling as training: temperature 1.0, top-p 0.95, top-k 20.",
+  "items": [
+    {"name": "baseline-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-batch-size", "20",
+              "--vllm-gpu-memory-utilization", "0.65"]}
+  ]
+}
