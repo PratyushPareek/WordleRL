@@ -18,7 +18,7 @@ Game logic is TextArena's `Wordle-v0`, with the standard Wordle word lists and o
 | `requirements.lock` | Exact package versions of the laptop venv, used to build the VM's venv |
 | `scripts/check_setup.py` | Prints the tool schema and the exact Qwen3 prompt, thinking on and off |
 | `data/raw_*.txt` | Original downloaded lists (2,315 answers; 10,657 extra accepted guesses) |
-| `data/answers_train.txt`, `answers_eval.txt` | 2,000 training secrets / 315 held-out secrets (seed 0, `scripts/make_splits.py`) |
+| `data/answers_train.txt`, `answers_eval.txt` | 2,000 training secrets / 315 held-out secrets (seed 0, `scripts/make_splits.py`). Training uses only the first 100 training words after a seeded shuffle (`--train-size`, decided 2026-10-29) |
 | `data/allowed_guesses.txt` | All 12,972 accepted guesses (answers + extras) |
 
 ## Environment

@@ -52,6 +52,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--output-dir", default=None)
     p.add_argument("--max-steps", type=int, default=500)
+    p.add_argument("--train-size", type=int, default=100,
+                   help="Unique secret words to train on: the first N of the training list after a seeded shuffle "
+                   "(Pratyush, 2026-10-29: 100). One pass = N / (words per step) steps")
     p.add_argument("--learning-rate", type=float, default=1e-5)
     p.add_argument("--num-generations", type=int, default=8, help="Games per secret word (GRPO group size)")
     # 4 x 4 = 16 games per optimizer step: LoRA tolerates large batches worse than full fine-tuning (keep < 32).
@@ -99,6 +102,7 @@ def main() -> None:
 
     train_words = list(answers("train"))
     random.Random(args.seed).shuffle(train_words)
+    train_words = train_words[: args.train_size]
     eval_words = list(answers("eval"))[: args.eval_size]
     if args.eval_only and not eval_words:
         raise SystemExit("--eval-only needs --eval-size > 0")
@@ -152,8 +156,11 @@ def main() -> None:
     )
     print(f"LoRA r={args.lora_r} alpha={args.lora_alpha} on all linear layers, learning rate {args.learning_rate}")
     if args.dry_run:
+        words_per_step = config.generation_batch_size // config.num_generations
         print(f"dry run OK: generation batch {config.generation_batch_size} games/step, "
-              f"{config.generation_batch_size // config.num_generations} secret words/step")
+              f"{words_per_step} secret words/step, one pass over {len(train_words)} training words = "
+              f"{len(train_words) // words_per_step} steps; {args.max_steps} steps = "
+              f"{args.max_steps * words_per_step / len(train_words):.1f} passes")
         return
 
     # Every game (training and evaluation) is appended to games.jsonl by a zero-weight reward function.
