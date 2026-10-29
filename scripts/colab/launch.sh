@@ -95,17 +95,36 @@ C upload -s "$S" "$TMP/params.json" /content/wordle_params.json >> "$OUT/launch.
 # Called directly (not via C) so $! is the client itself. The attached client keeps the VM alive (Colab
 # reclaims the VM ~20 min after it disconnects). --timeout: the CLI default is 30 s of execution.
 timeout_sec=$(python -c "print(int(($MAX_HOURS + 0.5) * 3600))")
-"${COLAB_BIN:-colab}" --auth="${COLAB_AUTH:-oauth2}" exec -s "$S" --timeout "$timeout_sec" \
-  -f scripts/colab/remote_job.py > "$OUT/exec.log" 2>&1 &
-EXEC_PID=$!
-if [ "${CPU_CAP:-1}" = 1 ]; then  # pause/resume duty cycle: ~20% of one core at most
-  ( trap 'kill -CONT $EXEC_PID 2>/dev/null; exit 0' TERM INT
-    while kill -0 "$EXEC_PID" 2>/dev/null; do
-      kill -STOP "$EXEC_PID" 2>/dev/null; sleep 0.8; kill -CONT "$EXEC_PID" 2>/dev/null; sleep 0.2
-    done ) &
-  CAP_PID=$!
-  say "client CPU cap on (pid $EXEC_PID, ~20% of a core)"
-fi
+start_exec() {
+  "${COLAB_BIN:-colab}" --auth="${COLAB_AUTH:-oauth2}" exec -s "$S" --timeout "$timeout_sec" \
+    -f scripts/colab/remote_job.py >> "$OUT/exec.log" 2>&1 &
+  EXEC_PID=$!
+  if [ "${CPU_CAP:-1}" = 1 ]; then  # pause/resume duty cycle: ~20% of one core at most
+    ( trap 'kill -CONT $EXEC_PID 2>/dev/null; exit 0' TERM INT
+      while kill -0 "$EXEC_PID" 2>/dev/null; do
+        kill -STOP "$EXEC_PID" 2>/dev/null; sleep 0.8; kill -CONT "$EXEC_PID" 2>/dev/null; sleep 0.2
+      done ) &
+    CAP_PID=$!
+    say "client CPU cap on (pid $EXEC_PID, ~20% of a core)"
+  fi
+}
+# The client sometimes loses its connection before the job starts (twice on 2026-10-29), leaving a billed VM
+# idle. Until the job has written its status file, a dead client means the job never started: send it again.
+started=0
+for try in 1 2 3; do
+  start_exec
+  say "remote job sent (try $try); waiting for its status file"
+  for _ in $(seq 1 24); do  # up to ~4 min
+    sleep 10
+    if C download -s "$S" /content/wordle_status.json "$OUT/status.json" > /dev/null; then started=1; break; fi
+    kill -0 "$EXEC_PID" 2>/dev/null || break
+  done
+  [ $started = 1 ] && break
+  if kill -0 "$EXEC_PID" 2>/dev/null; then say "client alive but no status file after 4 min"; break; fi
+  say "client exited before the job started (see exec.log); resending"
+  [ -n "${CAP_PID:-}" ] && kill "$CAP_PID" 2>/dev/null; CAP_PID=""
+done
+[ $started = 1 ] || { say "remote job did not start; stopping the VM"; exit 1; }
 say "remote job started; polling every $POLL_SEC s (logs: $OUT)"
 
 pull() {  # download this session's results archive and unpack it into results/ (it only holds this session's items)
