@@ -86,6 +86,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--save-steps", type=int, default=15, help="Save a checkpoint (adapter + optimizer) every N steps")
     p.add_argument("--report-to", default="none", help="none, trackio, wandb, ...")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--no-vllm", action="store_true",
+                   help="Generate with transformers instead of vLLM (local CPU tests of the real code paths only)")
     p.add_argument("--dry-run", action="store_true", help="Build config and datasets, then exit (no model, no GPU)")
     p.add_argument("--eval-only", action="store_true",
                    help="Baseline: play the held-out words with the untrained model (no LoRA, no training) "
@@ -94,6 +96,26 @@ def parse_args() -> argparse.Namespace:
 
 
 EVAL_SEED = 1234
+
+
+class WordleGRPOTrainer(GRPOTrainer):
+    """GRPOTrainer whose evaluation only plays and scores games.
+
+    TRL's evaluation also re-scores every finished game with the training model (importance-sampling
+    log-probs, then an eval loss) over the whole eval batch at once: 20 games x ~8k tokens ran out of memory
+    on a 40 GB A100 (2026-10-29). Evaluation needs only the games and their rewards, which
+    _generate_and_score_completions computes and logs; with importance sampling off and no reference model
+    (beta = 0) it runs no forward pass of the training model. Training is unchanged.
+    """
+
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        saved = self.vllm_importance_sampling_correction
+        self.vllm_importance_sampling_correction = False
+        try:
+            self._prepare_inputs(inputs)
+        finally:
+            self.vllm_importance_sampling_correction = saved
+        return torch.zeros((), device=self.accelerator.device), None, None
 
 
 def make_dataset(words) -> Dataset:
@@ -142,15 +164,15 @@ def main() -> None:
         # 6 valid guesses + a few invalid attempts; stops runaway tool loops.
         max_tool_calling_iterations=10,
         reward_weights=[weights[n] for n in names],
-        use_vllm=True,
+        use_vllm=not args.no_vllm,
         vllm_mode=args.vllm_mode,
         vllm_server_base_url=args.vllm_server_url if args.vllm_mode == "server" else None,
         vllm_gpu_memory_utilization=args.vllm_gpu_memory_utilization,
         vllm_max_model_length=args.vllm_max_model_length or max_completion_length + 1024,
         # TRL loads the model in float32 unless told otherwise (15 GB for 4B instead of 8 GB): load it in the
         # training precision. This also left too little GPU memory for vLLM in the first A100 run (2026-10-29).
-        model_init_kwargs={"dtype": "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-                           else "float16"},
+        model_init_kwargs={"dtype": ("bfloat16" if torch.cuda.is_bf16_supported() else "float16")
+                           if torch.cuda.is_available() else "float32"},
         # T4 (Colab free tier) has no bf16; fall back to fp16 there.
         bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
         fp16=torch.cuda.is_available() and not torch.cuda.is_bf16_supported(),
@@ -192,7 +214,7 @@ def main() -> None:
     config.reward_weights = config.reward_weights + [0.0]
 
     start = time.time()
-    trainer = GRPOTrainer(
+    trainer = WordleGRPOTrainer(
         model=args.model,
         reward_funcs=reward_funcs,
         train_dataset=make_dataset(train_words),
@@ -238,7 +260,8 @@ def summarize_games(path: str, max_completion_length: int) -> dict:
             "mean_guesses_when_solved": sum(len(g["guesses"]) for g in won) / len(won) if won else None,
             "games_with_invalid_rate": sum(g["invalid"] > 0 for g in gs) / n,
             "stopped_early_rate": sum(not g["done"] for g in gs) / n,
-            "hit_length_limit_rate": sum(t >= 0.95 * max_completion_length for t in tokens) / n,
+            # A game out of budget stops at the last turn that still fits, so count >= 90% of the budget.
+            "hit_length_limit_rate": sum(t >= 0.9 * max_completion_length for t in tokens) / n,
             "mean_completion_tokens": sum(tokens) / n,
         }
         print(f"[{mode}] games {n}: solved {s['solved_rate']:.1%}, guesses when solved "
