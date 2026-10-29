@@ -1,4 +1,4 @@
-# Wordle GRPO (Qwen3 + TRL)
+# WordleRL: Wordle GRPO (Qwen3 + TRL)
 
 Trains a Qwen3 model to play Wordle with TRL's `GRPOTrainer(environment_factory=...)`.
 Game logic is TextArena's `Wordle-v0`, with the standard Wordle word lists and our own scoring.
