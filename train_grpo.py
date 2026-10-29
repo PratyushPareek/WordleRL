@@ -165,6 +165,10 @@ def main() -> None:
         max_tool_calling_iterations=10,
         reward_weights=[weights[n] for n in names],
         use_vllm=not args.no_vllm,
+        # TRL's default "sequence_mask" weights a game by the product of per-token vLLM/trainer probability ratios;
+        # over ~7k thinking tokens that product collapsed to 1e-11..1e-42, so updates were zero (A100 run,
+        # 2026-10-29: grad_norm 2.8e-13). Per-token ratios capped at 3 stay near 1 at any length.
+        vllm_importance_sampling_mode="token_truncate",
         vllm_mode=args.vllm_mode,
         vllm_server_base_url=args.vllm_server_url if args.vllm_mode == "server" else None,
         vllm_gpu_memory_utilization=args.vllm_gpu_memory_utilization,
