@@ -16,6 +16,7 @@ import json
 import os
 import random
 import time
+from collections import Counter
 
 import torch
 from datasets import Dataset
@@ -212,12 +213,15 @@ def main() -> None:
               f"{args.max_steps * words_per_step / len(train_words):.1f} passes")
         return
 
-    # Every game (training and evaluation) is appended to games.jsonl by a zero-weight reward function.
+    # Every game (training and evaluation) is appended to games.jsonl, and its full conversation to
+    # completions.jsonl, by a zero-weight reward function.
     os.makedirs(output_dir, exist_ok=True)
     games_path = os.path.join(output_dir, "games.jsonl")
-    if os.path.exists(games_path):
-        os.remove(games_path)
-    recorder = make_game_recorder(games_path)
+    for name in ("games.jsonl", "completions.jsonl"):
+        if os.path.exists(os.path.join(output_dir, name)):
+            os.remove(os.path.join(output_dir, name))
+    recorder = make_game_recorder(games_path, max_tokens=max_completion_length,
+                                  max_tool_calls=config.max_tool_calling_iterations)
     reward_funcs = make_reward_funcs(names) + [recorder]
     config.reward_weights = config.reward_weights + [0.0]
 
@@ -273,11 +277,13 @@ def summarize_games(path: str, max_completion_length: int) -> dict:
             # A game out of budget stops at the last turn that still fits, so count >= 90% of the budget.
             "hit_length_limit_rate": sum(t >= 0.9 * max_completion_length for t in tokens) / n,
             "mean_completion_tokens": sum(tokens) / n,
+            "stop_reasons": dict(Counter(g.get("stop_reason", "unrecorded") for g in gs)),
         }
         print(f"[{mode}] games {n}: solved {s['solved_rate']:.1%}, guesses when solved "
               f"{s['mean_guesses_when_solved'] or float('nan'):.2f}, with an invalid guess "
               f"{s['games_with_invalid_rate']:.1%}, stopped early {s['stopped_early_rate']:.1%}, "
-              f"hit the length limit {s['hit_length_limit_rate']:.1%}, mean tokens {s['mean_completion_tokens']:.0f}")
+              f"hit the length limit {s['hit_length_limit_rate']:.1%}, mean tokens {s['mean_completion_tokens']:.0f}, "
+              f"stop reasons {s['stop_reasons']}")
     return out
 
 

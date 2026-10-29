@@ -90,18 +90,43 @@ def make_reward_funcs(names: list[str]):
     return [make(name) for name in names]
 
 
-def make_game_recorder(path: str):
-    """A zero-weight TRL reward function that appends every finished game to a JSONL file.
+def stop_reason(ep: dict, tokens: int | None, last_message: dict | None, max_tokens: int, max_tool_calls: int) -> str:
+    """Why a game ended, from the episode and the model's final message."""
+    if ep["solved"]:
+        return "solved"
+    if ep["done"]:
+        return "lost_6_guesses" if len(ep["history"]) >= NUM_GUESSES else "lost_invalid_streak"
+    if tokens is not None and tokens >= 0.9 * max_tokens:
+        return "out_of_budget"
+    if len(ep["history"]) + ep["invalid"] >= max_tool_calls:
+        return "tool_call_cap"
+    if last_message is not None and last_message.get("role") == "assistant":
+        # A final tool call with no reply: TRL dropped the reply because it would exceed the token budget.
+        # A final reply with no tool call: the model ended its turn without a parseable tool call.
+        return "out_of_budget" if last_message.get("tool_calls") else "no_tool_call"
+    return "other"
+
+
+def make_game_recorder(path: str, max_tokens: int, max_tool_calls: int):
+    """A zero-weight TRL reward function that appends every finished game to <path> (games.jsonl) and its full
+    conversation (every model turn incl. thinking and tool calls, plus tool replies) to completions.jsonl next to it.
     Set `record_games.trainer` after building the trainer to tag rows with train/eval and the step."""
     import json
+    import os
 
-    def record_games(environments, completion_ids=None, **kwargs) -> list[float]:
+    conv_path = os.path.join(os.path.dirname(path), "completions.jsonl")
+
+    def record_games(environments, completion_ids=None, completions=None, **kwargs) -> list[float]:
         trainer = getattr(record_games, "trainer", None)
         mode = ("train" if trainer.model.training else "eval") if trainer is not None else None
         step = trainer.state.global_step if trainer is not None else None
-        with open(path, "a") as f:
+        with open(path, "a") as f, open(conv_path, "a") as fc:
             for i, env in enumerate(environments):
                 ep = env._episode()
+                tokens = len(completion_ids[i]) if completion_ids is not None else None
+                messages = completions[i] if completions is not None else None
+                last = messages[-1] if isinstance(messages, list) and messages else None
+                assistant_turns = [m for m in messages or [] if isinstance(m, dict) and m.get("role") == "assistant"]
                 row = {
                     "mode": mode,
                     "step": step,
@@ -111,10 +136,16 @@ def make_game_recorder(path: str):
                     "solved": ep["solved"],
                     "invalid": ep["invalid"],
                     "done": ep["done"],
-                    "completion_tokens": len(completion_ids[i]) if completion_ids is not None else None,
+                    "completion_tokens": tokens,
+                    "stop_reason": stop_reason(ep, tokens, last, max_tokens, max_tool_calls),
+                    "assistant_turns": len(assistant_turns),
+                    "tool_calls": sum(len(m.get("tool_calls") or []) for m in assistant_turns),
+                    "final_reply_tail": (str(last.get("content", "")) if isinstance(last, dict) else "")[-500:],
                     **{f"score_{k}": v for k, v in score_components(ep).items()},
                 }
                 f.write(json.dumps(row) + "\n")
+                fc.write(json.dumps({"mode": mode, "step": step, "secret": ep["secret"],
+                                     "stop_reason": row["stop_reason"], "messages": messages}, default=str) + "\n")
         return [0.0] * len(environments)
 
     return record_games
