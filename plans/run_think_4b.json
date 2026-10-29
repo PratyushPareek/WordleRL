@@ -1,0 +1,12 @@
+{
+  "description": "One session: Qwen3-4B, thinking on. Baseline on the 20 held-out evaluation words, then low-rank LoRA GRPO for 50 steps (one pass over the 100 training words, 16 games per step) with evaluations on the same 20 words at steps 25 and 50.",
+  "items": [
+    {"name": "baseline-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-batch-size", "20",
+              "--vllm-gpu-memory-utilization", "0.5"]},
+    {"name": "grpo-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-steps", "50", "--eval-steps", "25", "--save-steps", "25",
+              "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16", "--eval-batch-size", "20",
+              "--vllm-gpu-memory-utilization", "0.45"]}
+  ]
+}
