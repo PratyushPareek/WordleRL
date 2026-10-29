@@ -1,0 +1,13 @@
+{
+  "description": "Qwen3-4B, thinking on, 16,384-token budget per game (the 8k run ran out after ~3 guesses at ~2,400 tokens of thinking per guess). Baseline on the 20 held-out words at 16k, then low-rank LoRA GRPO for 25 steps (50 of the 100 training words, 16 games per step) with an evaluation on the same 20 words at step 25; checkpoints every 10 steps. Plain sampling (temperature 1.0), per-token vLLM correction. Memory (A100 40 GB): vLLM 65% for the baseline (~16 GB KV, ~110k tokens, ~6 full-length 17k-token games at once) and 50% for training (~10 GB KV, ~70k tokens, ~4 full-length games at once).",
+  "items": [
+    {"name": "baseline-qwen3-4b-think-16k",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-batch-size", "20",
+              "--max-completion-length", "16384", "--vllm-gpu-memory-utilization", "0.65"]},
+    {"name": "grpo-qwen3-4b-think-16k",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-completion-length", "16384",
+              "--max-steps", "25", "--eval-steps", "25", "--save-steps", "10", "--warmup-steps", "3",
+              "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16", "--eval-batch-size", "20",
+              "--vllm-gpu-memory-utilization", "0.5"]}
+  ]
+}
