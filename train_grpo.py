@@ -1,8 +1,8 @@
 """GRPO training of a Qwen3 model on Wordle (TextArena game, standard word lists, custom scoring).
 
 Examples (run inside WSL via scripts/wsl_run.sh):
-  # Baseline: untrained model on all 315 held-out words
-  python train_grpo.py --model Qwen/Qwen3-4B --eval-only --eval-size 315 --eval-batch-size 32
+  # Baseline: untrained model on the 20 held-out evaluation words
+  python train_grpo.py --model Qwen/Qwen3-4B --eval-only --eval-batch-size 20
 
   # Training, thinking on
   python train_grpo.py --model Qwen/Qwen3-4B --thinking
@@ -72,7 +72,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vllm-max-model-length", type=int, default=None,
                    help="vLLM context window. Default max_completion_length + 1024 (prompt is ~400 tokens); "
                    "the model's own 40k default needs too much KV-cache memory")
-    p.add_argument("--eval-size", type=int, default=64, help="Held-out secret words per evaluation (0 = no eval)")
+    p.add_argument("--eval-size", type=int, default=20,
+                   help="Held-out secret words per evaluation, baseline included (Pratyush, 2026-10-29: 20; 0 = no eval)")
     p.add_argument("--eval-batch-size", type=int, default=None,
                    help="Games played together per eval batch (default = --per-device-train-batch-size). "
                    "Larger is faster with vLLM, if the KV cache fits")
@@ -85,6 +86,9 @@ def parse_args() -> argparse.Namespace:
                    help="Baseline: play the held-out words with the untrained model (no LoRA, no training) "
                    "and write every game to <output-dir>/games.jsonl")
     return p.parse_args()
+
+
+EVAL_SEED = 1234
 
 
 def make_dataset(words) -> Dataset:
@@ -103,7 +107,11 @@ def main() -> None:
     train_words = list(answers("train"))
     random.Random(args.seed).shuffle(train_words)
     train_words = train_words[: args.train_size]
-    eval_words = list(answers("eval"))[: args.eval_size]
+    # answers_eval.txt is alphabetical, so take a fixed random sample (own seed: the same words for the
+    # baseline and every evaluation during training, whatever --seed is).
+    eval_words = list(answers("eval"))
+    random.Random(EVAL_SEED).shuffle(eval_words)
+    eval_words = eval_words[: args.eval_size]
     if args.eval_only and not eval_words:
         raise SystemExit("--eval-only needs --eval-size > 0")
 

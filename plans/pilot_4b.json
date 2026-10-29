@@ -1,11 +1,11 @@
 {
-  "description": "Measure Qwen3-4B on an L4 before the thinking-on training run: full no-thinking baseline (315 held-out words, the 'before thinking' reference), a thinking baseline on 16 words (tokens per game, win rate), and one thinking GRPO step (time and memory). Thinking items are small: on an L4 only ~3 thinking games fit in the KV cache at once.",
+  "description": "Measure Qwen3-4B on an L4 before the thinking-on training run: baselines with thinking off and on, on the same 20 held-out words used for every evaluation during training (tokens per game, win rate), and one thinking GRPO step (time and memory). On an L4 only ~3 thinking games fit in the KV cache at once.",
   "items": [
     {"name": "baseline-qwen3-4b-nothink",
-     "args": ["--model", "Qwen/Qwen3-4B", "--eval-only", "--eval-size", "315", "--eval-batch-size", "32",
+     "args": ["--model", "Qwen/Qwen3-4B", "--eval-only", "--eval-size", "20", "--eval-batch-size", "20",
               "--vllm-gpu-memory-utilization", "0.55"]},
-    {"name": "pilot-baseline-qwen3-4b-think",
-     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-size", "16", "--eval-batch-size", "16",
+    {"name": "baseline-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-size", "20", "--eval-batch-size", "20",
               "--vllm-gpu-memory-utilization", "0.55"]},
     {"name": "pilot-train-qwen3-4b-think",
      "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-steps", "1", "--eval-size", "0", "--save-steps", "1000",
