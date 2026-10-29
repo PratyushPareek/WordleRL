@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/
+logs/
+setup_env.log
+# Colab launch working files (logs, status, downloaded archives); results/ itself is tracked
+results/colab_launch_*/
+# trainer checkpoints (optimizer state etc.); final adapters are kept
+results/**/checkpoint-*/

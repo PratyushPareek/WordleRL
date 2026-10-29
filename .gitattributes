@@ -1,0 +1,2 @@
+# LF everywhere: the Colab VM runs these files, and CRLF breaks bash scripts.
+* text=auto eol=lf

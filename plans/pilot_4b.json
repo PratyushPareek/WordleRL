@@ -1,0 +1,22 @@
+{
+  "description": "Measure Qwen3-4B on an L4 before committing to long runs: full no-thinking baseline (315 held-out words), a small thinking baseline, and 3 GRPO steps in each mode for step timings and memory.",
+  "items": [
+    {"name": "baseline-qwen3-4b-nothink",
+     "args": ["--model", "Qwen/Qwen3-4B", "--eval-only", "--eval-size", "315", "--eval-batch-size", "32",
+              "--vllm-gpu-memory-utilization", "0.55"]},
+    {"name": "pilot-baseline-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-size", "16", "--eval-batch-size", "16",
+              "--vllm-gpu-memory-utilization", "0.55"]},
+    {"name": "pilot-train-qwen3-4b-nothink",
+     "args": ["--model", "Qwen/Qwen3-4B", "--max-steps", "3", "--eval-size", "0", "--save-steps", "1000",
+              "--vllm-gpu-memory-utilization", "0.45"]},
+    {"name": "pilot-train-qwen3-4b-nothink-bs1",
+     "args": ["--model", "Qwen/Qwen3-4B", "--max-steps", "3", "--eval-size", "0", "--save-steps", "1000",
+              "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16",
+              "--vllm-gpu-memory-utilization", "0.45"]},
+    {"name": "pilot-train-qwen3-4b-think",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-steps", "2", "--eval-size", "0", "--save-steps", "1000",
+              "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16",
+              "--vllm-gpu-memory-utilization", "0.45"]}
+  ]
+}
