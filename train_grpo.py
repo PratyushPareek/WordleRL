@@ -62,11 +62,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p.add_argument("--max-completion-length", type=int, default=None,
                    help="Token budget for the whole game (all turns + feedback). Default 1536, or 8192 with --thinking")
-    # Temperature 1.0 for varied games within a group; top-p/top-k at Qwen's recommended values for thinking
-    # (Pratyush, 2026-10-29), which trims the tail of unlikely tokens that makes thinking ramble.
+    # Plain sampling at temperature 1.0, no top-p/top-k (Pratyush, 2026-10-29). vLLM reports probabilities after
+    # top-k/top-p while the trainer scores the full vocabulary, so a shortlist makes every vLLM/trainer ratio < 1.
     p.add_argument("--temperature", type=float, default=1.0)
-    p.add_argument("--top-p", type=float, default=0.95)
-    p.add_argument("--top-k", type=int, default=20)
+    p.add_argument("--top-p", type=float, default=1.0)
+    p.add_argument("--top-k", type=int, default=0, help="0 = off")
     p.add_argument("--warmup-steps", type=int, default=3)
     # Low-rank LoRA on all linear layers (TRL "LoRA Without Regret": RL needs rank 1-32, rank 1 matches full FT).
     p.add_argument("--lora-r", type=int, default=1)
