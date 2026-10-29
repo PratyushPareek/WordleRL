@@ -62,7 +62,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p.add_argument("--max-completion-length", type=int, default=None,
                    help="Token budget for the whole game (all turns + feedback). Default 1536, or 8192 with --thinking")
+    # Temperature 1.0 for varied games within a group; top-p/top-k at Qwen's recommended values for thinking
+    # (Pratyush, 2026-10-29), which trims the tail of unlikely tokens that makes thinking ramble.
     p.add_argument("--temperature", type=float, default=1.0)
+    p.add_argument("--top-p", type=float, default=0.95)
+    p.add_argument("--top-k", type=int, default=20)
+    p.add_argument("--warmup-steps", type=int, default=3)
     # Low-rank LoRA on all linear layers (TRL "LoRA Without Regret": RL needs rank 1-32, rank 1 matches full FT).
     p.add_argument("--lora-r", type=int, default=1)
     p.add_argument("--lora-alpha", type=int, default=32)
@@ -78,7 +83,7 @@ def parse_args() -> argparse.Namespace:
                    help="Games played together per eval batch (default = --per-device-train-batch-size). "
                    "Larger is faster with vLLM, if the KV cache fits")
     p.add_argument("--eval-steps", type=int, default=50)
-    p.add_argument("--save-steps", type=int, default=100)
+    p.add_argument("--save-steps", type=int, default=15, help="Save a checkpoint (adapter + optimizer) every N steps")
     p.add_argument("--report-to", default="none", help="none, trackio, wandb, ...")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--dry-run", action="store_true", help="Build config and datasets, then exit (no model, no GPU)")
@@ -124,13 +129,15 @@ def main() -> None:
         max_steps=args.max_steps,
         learning_rate=args.learning_rate,
         lr_scheduler_type="constant_with_warmup",
-        warmup_steps=10,
+        warmup_steps=args.warmup_steps,
         per_device_train_batch_size=args.per_device_train_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         num_generations=args.num_generations,
         num_generations_eval=1,
         max_completion_length=max_completion_length,
         temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
         chat_template_kwargs={"enable_thinking": args.thinking},
         # 6 valid guesses + a few invalid attempts; stops runaway tool loops.
         max_tool_calling_iterations=10,

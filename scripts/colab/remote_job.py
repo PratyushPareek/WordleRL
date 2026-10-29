@@ -65,15 +65,19 @@ def sh(cmd, prefix="  "):
 
 
 def pack():
-    """Tar this session's results (no trainer checkpoints) atomically for the laptop to download."""
+    """Tar this session's results atomically for the laptop to download. Of the trainer checkpoints only the
+    newest is included (rank-1 LoRA: ~25 MB with optimizer state), so a lost VM loses at most save_steps steps."""
     with _pack_lock:
         tmp = P["results_tar"] + ".tmp"
         with tarfile.open(tmp, "w:gz") as t:
             for name in _ran:
+                ckpts = sorted((WORK / "results" / name).glob("checkpoint-*"), key=lambda p: int(p.name.split("-")[-1]))
+                older = {f"results/{name}/{c.name}" for c in ckpts[:-1]}
                 for rel in (f"results/{name}", f"results/logs/{name}.log"):
                     if (WORK / rel).exists():
                         t.add(WORK / rel, arcname=rel,
-                              filter=lambda ti: None if "/checkpoint-" in ti.name else ti)
+                              filter=lambda ti: None if any(ti.name == o or ti.name.startswith(o + "/") for o in older)
+                              else ti)
         os.replace(tmp, P["results_tar"])
         set_state(last_pack=time.strftime("%F %T %Z"))
 

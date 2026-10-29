@@ -1,11 +1,12 @@
 {
-  "description": "One session on a Colab A100-SXM4-40GB: Qwen3-4B, thinking on. Baseline on the 20 held-out evaluation words, then low-rank LoRA GRPO for 50 steps (one pass over the 100 training words, 16 games per step) with evaluations on the same 20 words at steps 25 and 50. Memory split (40 GB): baseline gives vLLM 65% (26 GB: 8 GB weights, ~16 GB KV cache, ~110k tokens, so all 20 games run together; the training-side model copy takes 8 GB). Training gives vLLM 50% (20 GB, ~10 GB KV, ~70k tokens, ~8 full-length 9.2k-token games at once) and leaves ~20 GB for the training model (8 GB) plus one 9.2k-token sequence's activations and logits; hence batch 1 x 16 accumulation (16 games per optimizer step).",
+  "description": "One session on a Colab A100-SXM4-40GB: Qwen3-4B, thinking on. Items run one after the other, each in its own process. 1) Baseline on the 20 held-out evaluation words: vLLM gets 65% of the GPU (26 GB: 8 GB weights, ~16 GB KV cache, ~110k tokens); the trainer's own model copy takes 8 GB. 2) Low-rank LoRA GRPO for 50 steps (one pass over the 100 training words): each step generates 16 games (2 words x 8) with vLLM at 50% of the GPU (20 GB, ~10 GB KV, ~70k tokens, ~7 full-length 9.2k-token games at once), then trains on them one game at a time (batch 1 x 16 accumulation) in the remaining ~20 GB. Evaluations on the same 20 words at steps 25 and 50; checkpoints every 15 steps. Sampling: temperature 1.0, top-p 0.95, top-k 20.",
   "items": [
     {"name": "baseline-qwen3-4b-think",
      "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-batch-size", "20",
               "--vllm-gpu-memory-utilization", "0.65"]},
     {"name": "grpo-qwen3-4b-think",
-     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-steps", "50", "--eval-steps", "25", "--save-steps", "25",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-steps", "50", "--eval-steps", "25", "--save-steps", "15",
+              "--warmup-steps", "3",
               "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16", "--eval-batch-size", "20",
               "--vllm-gpu-memory-utilization", "0.5"]}
   ]
