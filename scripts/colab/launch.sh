@@ -20,13 +20,14 @@ export TZ=Asia/Kolkata   # timestamps in IST
 # oauth2 is the login that works for this project (signed in from WSL on 2026-10-29); ADC is not set up.
 C() { "${COLAB_BIN:-colab}" --auth="${COLAB_AUTH:-oauth2}" "$@" 2>&1 | grep -av "new version of Colab CLI\|colab update\|enable_update_check"; return "${PIPESTATUS[0]}"; }
 
-GPU=L4; MAX_HOURS=1.5; PLAN=""; S=""
+GPU=L4; MAX_HOURS=1.5; PLAN=""; S=""; EXTRA=()
 # Must stay well under the VM's release_grace_sec (300 s), so the final pull happens before the VM releases itself.
 POLL_SEC=${POLL_SEC:-120}
 while [ $# -gt 0 ]; do
   case $1 in
     --plan) PLAN=$2; shift 2 ;;  --gpu) GPU=$2; shift 2 ;;  --max-hours) MAX_HOURS=$2; shift 2 ;;
     --session) S=$2; shift 2 ;;  --preflight-only) PREFLIGHT_ONLY=1; shift ;;
+    --extra) EXTRA+=("$2"); shift 2 ;;  # repo-relative path not in git (e.g. a checkpoint), uploaded alongside the code
     *) echo "unknown arg $1"; exit 2 ;;
   esac
 done
@@ -53,13 +54,23 @@ crlf=$(grep -rlI $'\r' "$TMP/check" | sed "s|$TMP/check/||")
 for f in $(find "$TMP/check" -name '*.sh'); do bash -n "$f" || fail "bash -n failed: ${f#$TMP/check/}"; done
 python -m py_compile $(find "$TMP/check" -name '*.py') || fail "python compile failed in the bundle"
 [ -f "$TMP/check/requirements.lock" ] || fail "requirements.lock missing from the bundle"
-python - "$TMP/check/$PLAN" "$TMP/params.json" "$COMMIT" "$MAX_HOURS" <<'PY' || fail "plan file invalid"
-import json, sys
-plan_path, params_path, commit, max_hours = sys.argv[1:]
-plan = json.load(open(plan_path))
+for e in "${EXTRA[@]}"; do [ -e "$e" ] || fail "--extra $e does not exist"; done
+if [ ${#EXTRA[@]} -gt 0 ]; then
+  tar -czf "$TMP/extra.tar.gz" "${EXTRA[@]}" && tar -xzf "$TMP/extra.tar.gz" -C "$TMP/check"
+fi
+python - "$TMP/check" "$PLAN" "$TMP/params.json" "$COMMIT" "$MAX_HOURS" "${#EXTRA[@]}" <<'PY' || fail "plan file invalid"
+import json, os, sys
+check, plan_rel, params_path, commit, max_hours, n_extra = sys.argv[1:]
+plan = json.load(open(os.path.join(check, plan_rel)))
 assert plan["items"] and all(set(i) >= {"name", "args"} for i in plan["items"]), "items need name and args"
 assert len({i["name"] for i in plan["items"]}) == len(plan["items"]), "duplicate item names"
+for i in plan["items"]:  # a checkpoint to resume from must reach the VM (in git or via --extra)
+    a = i["args"]
+    if "--resume-from-checkpoint" in a:
+        ck = a[a.index("--resume-from-checkpoint") + 1]
+        assert os.path.isfile(os.path.join(check, ck, "trainer_state.json")), f"{i['name']}: {ck} not in the bundle or --extra"
 json.dump({"workdir": "/content/wordle", "bundle": "/content/wordle_bundle.tar.gz",
+           "extra": "/content/wordle_extra.tar.gz" if int(n_extra) else None,
            "status_file": "/content/wordle_status.json", "log_file": "/content/wordle_job.log",
            "results_tar": "/content/wordle_results.tar.gz", "ack_file": "/content/wordle_pulled",
            "git_commit": commit, "plan": plan["items"], "max_hours": float(max_hours),
@@ -91,6 +102,10 @@ C new -s "$S" --gpu "$GPU" >> "$OUT/launch.log" || { say "colab new failed (quot
 say "VM $S allocated; billing now: $(C usage | grep -i rate | tr '\n' ' ') (L4 should be ~1.54/hr)"
 C upload -s "$S" "$TMP/bundle.tar.gz" /content/wordle_bundle.tar.gz >> "$OUT/launch.log" &&
 C upload -s "$S" "$TMP/params.json" /content/wordle_params.json >> "$OUT/launch.log" || { say "upload failed"; exit 1; }
+if [ ${#EXTRA[@]} -gt 0 ]; then
+  C upload -s "$S" "$TMP/extra.tar.gz" /content/wordle_extra.tar.gz >> "$OUT/launch.log" || { say "extra upload failed"; exit 1; }
+  say "uploaded extra: ${EXTRA[*]} ($(du -h "$TMP/extra.tar.gz" | cut -f1))"
+fi
 
 # Called directly (not via C) so $! is the client itself. The attached client keeps the VM alive (Colab
 # reclaims the VM ~20 min after it disconnects). --timeout: the CLI default is 30 s of execution.

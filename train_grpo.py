@@ -86,6 +86,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--save-steps", type=int, default=15, help="Save a checkpoint (adapter + optimizer) every N steps")
     p.add_argument("--report-to", default="none", help="none, trackio, wandb, ...")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--resume-from-checkpoint", default=None,
+                   help="Continue training from a trainer checkpoint (adapter, optimizer, schedule, step count). "
+                   "--max-steps is the total, so a step-30 checkpoint with --max-steps 50 trains 20 more steps. "
+                   "Other settings, e.g. --max-completion-length, may differ from the original run")
     p.add_argument("--no-vllm", action="store_true",
                    help="Generate with transformers instead of vLLM (local CPU tests of the real code paths only)")
     p.add_argument("--dry-run", action="store_true", help="Build config and datasets, then exit (no model, no GPU)")
@@ -239,7 +243,9 @@ def main() -> None:
         print("baseline metrics:", {k: round(v, 4) for k, v in run["eval_metrics"].items()})
     else:
         t = time.time()
-        trainer.train()
+        if args.resume_from_checkpoint:
+            print(f"resuming from {args.resume_from_checkpoint}")
+        trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
         run["train_sec"] = round(time.time() - t)
         run["log_history"] = trainer.state.log_history
         trainer.save_model(output_dir)

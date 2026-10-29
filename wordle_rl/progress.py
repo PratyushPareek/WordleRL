@@ -40,17 +40,20 @@ class ProgressCallback(TrainerCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         self.start = time.time()
-        print(f"[{now_ist()}] training started, {state.max_steps} steps", flush=True)
+        self.start_step = state.global_step  # > 0 when resuming from a checkpoint
+        print(f"[{now_ist()}] training started at step {self.start_step}, {state.max_steps} steps", flush=True)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
         logs = logs or {}
         step, total = state.global_step, state.max_steps
+        done = step - getattr(self, "start_step", 0)
         elapsed = time.time() - self.start
-        eta = elapsed / step * (total - step) if step else float("nan")
+        eta = elapsed / done * (total - step) if done > 0 else float("nan")
         shown = " ".join(f"{k}={logs[k]:.3f}" for k in KEYS if isinstance(logs.get(k), (int, float)))
         evals = " ".join(f"{k}={v:.3f}" for k, v in logs.items() if k.startswith("eval_") and isinstance(v, float))
+        # Leading newline: tqdm's bar has no line end, and the remote job drops bar lines from the main log.
         print(
-            f"[{now_ist()}] step {step}/{total} elapsed {fmt_seconds(elapsed)} "
-            f"ETA {fmt_seconds(eta) if step else '?'} {shown} {evals}".rstrip(),
+            f"\n[{now_ist()}] step {step}/{total} elapsed {fmt_seconds(elapsed)} "
+            f"ETA {fmt_seconds(eta) if done > 0 else '?'} {shown} {evals}".rstrip(),
             flush=True,
         )

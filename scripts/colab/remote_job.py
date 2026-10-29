@@ -129,6 +129,7 @@ def run_item(item, deadline_at):
     with open(item_log, "w") as f:
         for line in proc.stdout:
             f.write(line)
+            f.flush()  # so the packed copy the laptop pulls is current
             # tqdm bars and per-request vLLM noise stay in the item log; progress lines go to the main log
             if "it/s]" not in line and "s/it]" not in line:
                 log(f"  [{name}] {line.rstrip()}")
@@ -152,6 +153,10 @@ def main():
     with tarfile.open(P["bundle"]) as t:
         t.extractall(WORK, filter="data")
     log(f"code ready in {WORK} (commit {P.get('git_commit')})")
+    if P.get("extra"):  # files not in git (e.g. a checkpoint to resume from), uploaded by launch.sh --extra
+        with tarfile.open(P["extra"]) as t:
+            t.extractall(WORK, filter="data")
+            log(f"extra files unpacked: {len(t.getnames())} entries, e.g. {t.getnames()[0]}")
     deadline_at = time.time() + P["max_hours"] * 3600
 
     set_state(state="setup")

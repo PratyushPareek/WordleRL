@@ -1,0 +1,14 @@
+{
+  "description": "Qwen3-4B, thinking on, 12,288-token budget per game (Pratyush, 2026-10-29). Baseline on the 20 held-out words at 12k, then resume GRPO from the 8k run's step-30 checkpoint for 20 more steps (31-50, the rest of the 100 training words) at 12k, with an evaluation on the same 20 words at step 50 and checkpoints at steps 40 and 50. The checkpoint is not in git: launch with --extra results/run-8k-stopped-step30/grpo-qwen3-4b-think-8k/checkpoint-30. Memory (A100 40 GB): vLLM 65% for the baseline (~16 GB KV, ~110k tokens, ~8 full-length 13.3k-token games at once), 50% for training (~10 GB KV, ~70k tokens, ~5 at once).",
+  "items": [
+    {"name": "baseline-qwen3-4b-think-12k",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--eval-only", "--eval-batch-size", "20",
+              "--max-completion-length", "12288", "--vllm-gpu-memory-utilization", "0.65"]},
+    {"name": "grpo-qwen3-4b-think-12k-from30",
+     "args": ["--model", "Qwen/Qwen3-4B", "--thinking", "--max-completion-length", "12288",
+              "--resume-from-checkpoint", "results/run-8k-stopped-step30/grpo-qwen3-4b-think-8k/checkpoint-30",
+              "--max-steps", "50", "--eval-steps", "25", "--save-steps", "10", "--warmup-steps", "3",
+              "--per-device-train-batch-size", "1", "--gradient-accumulation-steps", "16", "--eval-batch-size", "20",
+              "--vllm-gpu-memory-utilization", "0.5"]}
+  ]
+}
