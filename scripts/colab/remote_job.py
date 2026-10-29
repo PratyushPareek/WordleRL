@@ -132,6 +132,7 @@ def run_item(item, deadline_at):
     timer.cancel()
     mins = (time.time() - t0) / 60
     if rc == 0:
+        out.mkdir(parents=True, exist_ok=True)
         (out / "DONE").write_text(f"commit {P.get('git_commit')} finished {time.strftime('%F %T %Z')}\n")
         state["items_done"].append(name)
         log(f"ITEM {name} DONE in {mins:.1f} min")
